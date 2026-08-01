@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: devsecops-app-deployment
+  labels:
+    app: devsecops-app
+spec:
+  replicas: 2 
+  selector:
+    matchLabels:
+      app: devsecops-app
+  template:
+    metadata:
+      labels:
+        app: devsecops-app
+      # Prometheus metrics collection target enabled
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "80"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+      - name: app-container
+        image: DOCKERHUB_USERNAME/devsecops:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 80
+        
+        # Security Hardening Layer (Trivy Verification Compliant)
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false
+          runAsNonRoot: true
+          runAsUser: 10001 
+          
+        # Resource Quota management
+        resources:
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+          requests:
+            cpu: "250m"
+            memory: "256Mi"
