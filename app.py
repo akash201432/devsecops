@@ -1,7 +1,7 @@
 """
 Simple secure Flask app with Sign Up, Login, and Dashboard pages.
 Uses SQLite for storage and Werkzeug for password hashing.
-Only two files needed: app.py and requirements.txt
+Includes Prometheus metrics export for Kubernetes monitoring.
 """
 
 import os
@@ -11,11 +11,14 @@ from datetime import timedelta
 
 from flask import Flask, request, redirect, url_for, session, render_template_string, flash, g
 from werkzeug.security import generate_password_hash, check_password_hash
+from prometheus_flask_exporter import PrometheusMetrics
 
 # --------------------------------------------------------------------------
 # App configuration
 # --------------------------------------------------------------------------
 app = Flask(__name__)
+metrics = PrometheusMetrics(app) # Enables /metrics endpoint for Prometheus
+
 app.config.update(
     SECRET_KEY=os.environ.get("SECRET_KEY", os.urandom(32)),
     SESSION_COOKIE_HTTPONLY=True,      # JS can't read the cookie
@@ -44,20 +47,24 @@ def close_db(exception=None):
 
 
 def init_db():
-    with app.app_context():
-        db = get_db()
-        db.execute(
-            """
-            CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT UNIQUE NOT NULL,
-                email TEXT UNIQUE NOT NULL,
-                password_hash TEXT NOT NULL,
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP
-            )
-            """
+    db = sqlite3.connect(DATABASE)
+    db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            email TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
-        db.commit()
+        """
+    )
+    db.commit()
+    db.close()
+
+# Ensure the database and tables are created automatically on app load
+with app.app_context():
+    init_db()
 
 
 # --------------------------------------------------------------------------
@@ -93,7 +100,7 @@ def login_required(view):
 
 
 # --------------------------------------------------------------------------
-# Shared page layout (inline template, no separate templates folder needed)
+# Shared page layout
 # --------------------------------------------------------------------------
 BASE_HTML = """
 <!doctype html>
@@ -292,9 +299,5 @@ def logout():
     return redirect(url_for("login"))
 
 
-# --------------------------------------------------------------------------
-# Entry point
-# --------------------------------------------------------------------------
 if __name__ == "__main__":
-    init_db()
-    app.run(debug=True)
+    app.run(host="0.0.0.0", port=8000)
